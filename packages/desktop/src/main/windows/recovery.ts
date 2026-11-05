@@ -4,16 +4,24 @@ import { Effect } from "effect"
 import { DesktopLogging, scoped } from "../native/logging"
 import { nativeT } from "../native/translations"
 import { safeWindowURL } from "./state"
-import { makeUnresponsiveSampler } from "./unresponsive"
+import { unresponsiveSampler } from "./unresponsive"
 
-export const makeWindowRecovery = Effect.gen(function* () {
+export const windowRecovery = Effect.gen(function* () {
   const context = yield* Effect.context()
   const runFork = Effect.runForkWith(context)
   const runPromise = Effect.runPromiseWith(context)
   const logging = yield* DesktopLogging.Service
-  const createUnresponsiveSampler = yield* makeUnresponsiveSampler
+  const createUnresponsiveSampler = yield* unresponsiveSampler
 
-  function wireWindowRecovery(win: BrowserWindow, name: string, relaunch: () => void) {
+  function wireWindowRecovery(
+    win: BrowserWindow,
+    name: string,
+    options: {
+      readonly relaunch: () => void
+      /** Shows a window that is still hidden; the dialog is modal to it. */
+      readonly reveal: () => void
+    },
+  ) {
     let showing = false
     const sampler = createUnresponsiveSampler(win, name)
 
@@ -33,7 +41,7 @@ export const makeWindowRecovery = Effect.gen(function* () {
 
       if (action === "relaunch") {
         sampler.stopAndFlush()
-        relaunch()
+        options.relaunch()
 
         return false
       }
@@ -51,6 +59,8 @@ export const makeWindowRecovery = Effect.gen(function* () {
       showing = true
 
       try {
+        options.reveal()
+
         while (!win.isDestroyed()) {
           const actions: { id: RecoveryAction; label: string }[] = wait
             ? [
